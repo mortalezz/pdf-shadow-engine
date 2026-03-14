@@ -1,9 +1,6 @@
 """
 PDF Shadow Attack Forensic Engine — FastAPI Interface
 
-Wraps the forensic engine in three endpoints that do exactly
-what the CLI does, but over HTTP.
-
     uvicorn api:app --host 0.0.0.0 --port 8000
 """
 
@@ -13,6 +10,8 @@ import shutil
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse
 from pdf_forensic_engine import analyze
+
+RESPONSES = {200: {"description": "Success"}, 422: {"description": "Invalid file"}}
 
 app = FastAPI(
     title="SigCheck — PDF Signature Forensic Engine",
@@ -35,12 +34,14 @@ app = FastAPI(
     version="2.0.0",
     docs_url="/docs",
     redoc_url=None,
-    swagger_ui_parameters={"defaultModelsExpandDepth": -1, "defaultModelRendering": "example", "showExtensions": False, "showCommonExtensions": False},
+    swagger_ui_parameters={
+        "defaultModelsExpandDepth": -1,
+        "defaultModelRendering": "example",
+    },
 )
 
 
 def _save_upload(upload: UploadFile) -> str:
-    """Save uploaded file to a temp path, return the path."""
     if not upload.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="File must be a PDF.")
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
@@ -61,12 +62,9 @@ def health():
 
 @app.post("/analyze", tags=["Analyze"],
           summary="JSON forensic report",
-          response_description="Structured JSON with verdict, attack classes, and per-signature findings",
-          responses={422: {"description": "Invalid file"}})
-async def analyze_json(file: UploadFile = File(..., description="Signed PDF document to analyze")):
-    """Upload a signed PDF and receive a structured JSON forensic report
-    with verdict, attack class classification, and EXPLOITED / SUSCEPTIBLE
-    status for every signature field."""
+          responses=RESPONSES)
+async def analyze_json(file: UploadFile = File(..., description="Signed PDF to analyze")):
+    """Upload a signed PDF and receive a structured JSON forensic report."""
     path = _save_upload(file)
     try:
         report = analyze(path)
@@ -77,11 +75,9 @@ async def analyze_json(file: UploadFile = File(..., description="Signed PDF docu
 
 @app.post("/report/md", tags=["Reports"],
           summary="Markdown forensic report",
-          response_description="Downloadable .md file with full forensic analysis",
-          responses={422: {"description": "Invalid file"}})
-async def report_markdown(file: UploadFile = File(..., description="Signed PDF document to analyze")):
-    """Upload a signed PDF and download a Markdown forensic report
-    that renders natively on GitHub."""
+          responses=RESPONSES)
+async def report_markdown(file: UploadFile = File(..., description="Signed PDF to analyze")):
+    """Upload a signed PDF and download a Markdown forensic report."""
     path = _save_upload(file)
     try:
         report = analyze(path)
@@ -97,10 +93,9 @@ async def report_markdown(file: UploadFile = File(..., description="Signed PDF d
 
 @app.post("/report/pdf", tags=["Reports"],
           summary="PDF forensic report",
-          response_description="Downloadable PDF with forensic analysis and sardonic commentary",
-          responses={422: {"description": "Invalid file"}})
-async def report_pdf(file: UploadFile = File(..., description="Signed PDF document to analyze")):
-    """Upload a signed PDF and download a professionally formatted PDF forensic report.
+          responses=RESPONSES)
+async def report_pdf(file: UploadFile = File(..., description="Signed PDF to analyze")):
+    """Upload a signed PDF and download a PDF forensic report.
 
     Yes, the tool that forensically dismantles PDF signature fraud
     outputs its findings as a PDF. The format is not the problem.
