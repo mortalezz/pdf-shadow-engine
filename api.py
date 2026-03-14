@@ -5,13 +5,17 @@ PDF Shadow Attack Forensic Engine — FastAPI Interface
 """
 
 import os
+import uuid
 import tempfile
 import shutil
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse, HTMLResponse
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
+from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse, HTMLResponse, RedirectResponse
 from pdf_forensic_engine import analyze
 
 RESPONSES = {200: {"description": "Success"}, 422: {"description": "Invalid file"}}
+
+# In-memory cache for HTML reports (auto-expire would be nice, but for now simple dict)
+_html_cache = {}
 
 app = FastAPI(
     title="SigCheck — PDF Signature Forensic Engine",
@@ -60,6 +64,15 @@ def health():
     return {"status": "ok", "engine": "SigCheck v2"}
 
 
+@app.get("/view/{report_id}", include_in_schema=False)
+async def view_report(report_id: str):
+    """Serve a cached HTML report by ID."""
+    html = _html_cache.pop(report_id, None)
+    if html is None:
+        raise HTTPException(status_code=404, detail="Report expired or not found.")
+    return HTMLResponse(content=html)
+
+
 @app.post("/analyze", tags=["Analyze"],
           summary="JSON forensic report",
           responses=RESPONSES)
@@ -74,14 +87,31 @@ async def analyze_json(file: UploadFile = File(..., description="Signed PDF to a
 
 
 @app.post("/report/html", tags=["Reports"],
-          summary="HTML forensic report (view in browser)",
+          summary="HTML forensic report (opens in new tab)",
           responses=RESPONSES)
-async def report_html(file: UploadFile = File(..., description="Signed PDF to analyze")):
-    """Upload a signed PDF and view the forensic report directly in the browser."""
+async def report_html(request: Request, file: UploadFile = File(..., description="Signed PDF to analyze")):
+    """Upload a signed PDF and get a link to view the forensic report in the browser.
+
+    The response is a redirect to a temporary page that renders the full
+    HTML report. Open the URL from the response headers in a new tab."""
     path = _save_upload(file)
     try:
         report = analyze(path)
-        return HTMLResponse(content=report.to_html())
+        html = report.to_html()
+        report_id = uuid.uuid4().hex[:12]
+        _html_cache[report_id] = html
+        # Keep cache bounded
+        if len(_html_cache) > 100:
+            oldest = next(iter(_html_cache))
+            _html_cache.pop(oldest, None)
+        view_url = f"/view/{report_id}"
+        return JSONResponse(
+            content={
+                "report_url": str(request.base_url).rstrip('/') + view_url,
+                "message": "Open the report_url in your browser to view the HTML report.",
+            },
+            headers={"Location": view_url},
+        )
     finally:
         os.unlink(path)
 
