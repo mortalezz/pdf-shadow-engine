@@ -191,64 +191,221 @@ class ForensicReport:
         lines.append(f"**File size:** {self.filesize:,} bytes  ")
         lines.append("")
 
-        # Verdict banner
         v = self._verdict(attacks, findings)
-        if CRITICAL in [f.severity for f in findings]:
+        sevs = [f.severity for f in findings]
+        has_exploited = any(
+            sr.properties.get(f'{ac.lower()}_status') == EXPLOITED
+            for sr in self.sig_reports for ac in sr.attack_classes)
+        has_susceptible = any(
+            sr.properties.get(f'{ac.lower()}_status', SUSCEPTIBLE) == SUSCEPTIBLE
+            and ac in sr.attack_classes
+            for sr in self.sig_reports for ac in sr.attack_classes)
+
+        if has_exploited:
             lines.append(f"> **🔴 VERDICT: {v}**")
-        elif HIGH in [f.severity for f in findings]:
+        elif HIGH in sevs:
             lines.append(f"> **🟠 VERDICT: {v}**")
         else:
             lines.append(f"> **✅ VERDICT: {v}**")
         lines.append("")
 
-        # Attack classes summary
-        if attacks:
-            exploited = []
-            susceptible = []
-            for sr in self.sig_reports:
-                for ac in sr.attack_classes:
-                    status = sr.properties.get(f'{ac.lower()}_status', SUSCEPTIBLE)
-                    if status == EXPLOITED and ac not in [a for a,_ in exploited]:
-                        exploited.append((ac, sr.field_name))
-                    elif ac not in [a for a,_ in susceptible] and ac not in [a for a,_ in exploited]:
-                        susceptible.append((ac, sr.field_name))
+        # ============================================================
+        # RED: CRIME SCENE — the trail is still warm
+        # ============================================================
+        exploited_pairs = [(sr, ac) for sr in self.sig_reports
+                           for ac in sr.attack_classes
+                           if sr.properties.get(f'{ac.lower()}_status') == EXPLOITED]
 
-            if exploited:
-                lines.append("## ⛔ Attacks Performed")
-                lines.append("")
-                lines.append("The following attack classes are not theoretical vulnerabilities — the attack "
-                             "artifacts are structurally present in the document, meaning the attacks were "
-                             "actually carried out:")
-                lines.append("")
-                for ac, field in exploited:
-                    lines.append(f"- **{ac}** on `{field}`")
-                lines.append("")
-
-            if susceptible:
-                lines.append("## ⚠️ Vulnerabilities Present (Not Exploited)")
-                lines.append("")
-                lines.append("The following vulnerabilities exist in the document's cryptographic infrastructure "
-                             "but show no evidence of exploitation:")
-                lines.append("")
-                for ac, field in susceptible:
-                    lines.append(f"- **{ac}** on `{field}`")
-                lines.append("")
-
-        # Per-signature detail
-        lines.append("## Signature Analysis")
-        lines.append("")
-        for sr in self.sig_reports:
-            lines.append(f"### `{sr.field_name}`")
+        if exploited_pairs:
+            lines.append("## 🔴 Crime Scene")
+            lines.append("")
+            lines.append(
+                "This is not a vulnerability assessment. The artifacts below are not "
+                "theoretical weaknesses that could be exploited under the right conditions — "
+                "they are the structural residue of attacks that were already carried out. "
+                "The perpetrator's trail is not getting cold. It is embedded in the binary "
+                "structure of this document, and it will remain there for as long as the "
+                "file exists.")
             lines.append("")
 
-            # Key properties as a compact block
+            for sr, ac in exploited_pairs:
+                lines.append(f"### ⛔ {ac} — `{sr.field_name}`")
+                lines.append("")
+
+                if ac == SHADOW:
+                    bsize = sr.properties.get('bitmap_size', 'unknown')
+                    lines.append(
+                        f"A successful Hide-and-Replace Shadow Attack is impossible without "
+                        f"leaving a structural artifact in the appearance stream of the targeted "
+                        f"signature field, and that artifact is clearly present here: the "
+                        f"appearance stream contains an image rendering operator (`Do`) "
+                        f"referencing a {bsize}-pixel bitmap with **zero** text rendering "
+                        f"operators (`TJ/Tj`). The standard text that every legitimate "
+                        f"e-signature platform produces — \"Digitally signed by [Name]\" — "
+                        f"is entirely absent. A picture was placed where a cryptographic "
+                        f"identity should be.")
+                    lines.append("")
+
+                    if sr.properties.get('bitmap_alpha'):
+                        lines.append(
+                            f"The injected bitmap includes an alpha transparency mask (`/SMask`), "
+                            f"which enables background-free overlay — the digital equivalent of "
+                            f"cutting a signature out of one document with scissors and gluing it "
+                            f"onto another, except the scissors are digital, the glue is a PDF "
+                            f"XObject reference, and the document is someone's signed contract.")
+                        lines.append("")
+
+                    green_sigs = [s for s in self.sig_reports
+                                  if 'GREEN' in s.properties.get('appearance', '')]
+                    if green_sigs:
+                        gs = green_sigs[0]
+                        signer = gs.properties.get('signer', 'the countersigner')
+                        lines.append(
+                            f"The proof is on the same page. The `{gs.field_name}` field, signed "
+                            f"by {signer}, uses the same certificate, the same PKCS#7 "
+                            f"infrastructure, and the same platform — and it produced a proper "
+                            f"text-based signature with \"Digitally signed by\" rendering. The "
+                            f"platform is demonstrably capable of producing correct output. It "
+                            f"chose not to produce correct output for this field.")
+                        lines.append("")
+
+                elif ac == ISA:
+                    br = sr.properties.get('byterange', [0,0,0,0])
+                    br_end = sr.properties.get('byterange_end', 0)
+                    fsize = sr.properties.get('filesize', 0)
+                    gap = fsize - br_end
+                    redefined = self.metadata.get('objects_redefined', [])
+                    lines.append(
+                        f"An Incremental Saving Attack appends content beyond the signed byte "
+                        f"range without invalidating the signature's hash. The CCS 2019 "
+                        f"verification algorithm (Listing 2, Line 20) requires that `c+d` must "
+                        f"equal the file size. In this document, the ByteRange ends at byte "
+                        f"{br_end:,} but the file continues to byte {fsize:,}, leaving "
+                        f"**{gap:,} bytes** of unsigned content that anyone could have appended "
+                        f"after the first signer signed.")
+                    lines.append("")
+
+                    if redefined:
+                        lines.append(
+                            f"This is not a hypothetical gap — Objects `{redefined}` were "
+                            f"redefined in the incremental update section after the first "
+                            f"`%%EOF` marker, including countersignature fields, appearance "
+                            f"streams, and catalog references. The ISA was not merely possible. "
+                            f"It was performed, and the redefined objects are the structural "
+                            f"evidence.")
+                        lines.append("")
+
+                    lines.append("```")
+                    lines.append(f"ByteRange:         [{br[0]}  {br[1]}  {br[2]}  {br[3]}]")
+                    lines.append(f"ByteRange end:     {br_end:,}")
+                    lines.append(f"File size:         {fsize:,}")
+                    lines.append(f"Unsigned gap:      {gap:,} bytes")
+                    lines.append(f"Objects redefined: {redefined}")
+                    lines.append("```")
+                    lines.append("")
+
+        # ============================================================
+        # YELLOW: ASK QUESTIONS — don't rush it to court
+        # ============================================================
+        susceptible_pairs = [(sr, ac) for sr in self.sig_reports
+                             for ac in sr.attack_classes
+                             if sr.properties.get(f'{ac.lower()}_status', SUSCEPTIBLE) == SUSCEPTIBLE
+                             and sr.properties.get(f'{ac.lower()}_status') != 'N/A']
+
+        if susceptible_pairs:
+            lines.append("## 🟡 Ask Questions")
+            lines.append("")
+            lines.append(
+                "The findings below describe a document that was created with dangerously "
+                "weak cryptographic infrastructure, but where nothing overtly suspicious has "
+                "happened yet. These are unlocked doors, not break-ins. The appropriate "
+                "response is not to rush to court — it is to ask questions. Ask who signed "
+                "it. Ask who issued the certificate. Ask the platform where the document "
+                "originated. Fraud survives because people don't ask such questions.")
+            lines.append("")
+
+            seen = set()
+            for sr, ac in susceptible_pairs:
+                key = (sr.field_name, ac)
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                lines.append(f"### ⚠️ {ac} — `{sr.field_name}`")
+                lines.append("")
+
+                if ac == PKCS:
+                    if sr.properties.get('cert_self_signed'):
+                        cert = sr.properties.get('cert_subject', 'unknown')
+                        lines.append(
+                            f"The certificate (`{cert}`) is self-signed, which means the signer "
+                            f"issued their own credentials with no independent certificate "
+                            f"authority vouching for their identity — in everyday terms, this is "
+                            f"like writing your own letter of reference. **Question to ask:** Who "
+                            f"is the issuer of this certificate, and can they independently confirm "
+                            f"the signer's identity?")
+                        lines.append("")
+                    if sr.properties.get('cert_validity_years', 0) > 10:
+                        y = sr.properties['cert_validity_years']
+                        na = sr.properties.get('cert_not_after', '')
+                        lines.append(
+                            f"The certificate is valid for **{y} years** (until {na}), far beyond "
+                            f"the industry standard of 1 to 3 years, which means the same "
+                            f"cryptographic key will be used for decades without rotation. If the "
+                            f"key is ever compromised, every document ever signed with it becomes "
+                            f"retroactively untrustworthy. **Question to ask:** What is the key "
+                            f"rotation policy, and has the private key ever been audited?")
+                        lines.append("")
+                    if 'pkcs1v15' in str(sr.properties.get('sig_alg', '')).lower():
+                        lines.append(
+                            "The signature uses **PKCS#1 v1.5 padding**, which has been deprecated "
+                            "in favor of PSS (v2.1) by RFC 8017 because v1.5 is deterministic and "
+                            "lacks a salt. **Question to ask:** Why is a 2024 document using "
+                            "cryptography that was deprecated years ago, and does the platform "
+                            "support modern alternatives?")
+                        lines.append("")
+                    if sr.properties.get('digest_alg') and sr.properties.get('hash_type') == 'SHA-1':
+                        lines.append(
+                            "The digest algorithm field declares SHA-256 but the actual embedded "
+                            "hash is 20 bytes, consistent with SHA-1. SHA-1 has been broken for "
+                            "collision resistance since 2017. **Question to ask:** Is the platform "
+                            "aware of this mismatch, and is it intentional?")
+                        lines.append("")
+
+                elif ac == USF:
+                    lines.append(
+                        "This signature field exists in the document but is missing the "
+                        "information needed to validate it — either the ByteRange or the "
+                        "Contents is absent, null, or malformed. A PDF viewer that treats "
+                        "missing validation data as \"no problem\" rather than \"no signature\" "
+                        "may display a green checkmark on a field that was never cryptographically "
+                        "verified. **Question to ask:** Was this field intended to be signed, and "
+                        "if so, why is the validation data missing?")
+                    lines.append("")
+
+        # ============================================================
+        # SIGNATURE DETAIL
+        # ============================================================
+        lines.append("## Signature Detail")
+        lines.append("")
+        for sr in self.sig_reports:
+            ap = sr.properties.get('appearance', '')
+            if 'RED' in ap:
+                icon = "🔴"
+            elif 'GREEN' in ap:
+                icon = "✅"
+            else:
+                icon = "🟡"
+            lines.append(f"### {icon} `{sr.field_name}`")
+            lines.append("")
+
             props = sr.properties
             if props.get('timestamp'):
                 lines.append(f"**Signed:** {props['timestamp']}  ")
             if props.get('signer'):
                 lines.append(f"**Signer:** {props['signer']}  ")
             if props.get('cert_subject'):
-                lines.append(f"**Certificate:** {props['cert_subject']}  ")
+                lines.append(f"**Certificate:** `{props['cert_subject']}`  ")
             if props.get('cert_self_signed') is not None:
                 lines.append(f"**Self-signed:** {props['cert_self_signed']}  ")
             if props.get('cert_validity_years'):
@@ -266,37 +423,18 @@ class ForensicReport:
                 lines.append(f"**Bitmap:** {props['bitmap_size']}{alpha}  ")
             lines.append("")
 
-            # Attack classification
             if sr.attack_classes:
-                lines.append("| Attack Class | Status | Evidence |")
-                lines.append("|---|---|---|")
+                lines.append("| Attack Class | Status |")
+                lines.append("|---|---|")
                 for ac in sorted(sr.attack_classes):
                     status = props.get(f'{ac.lower()}_status', SUSCEPTIBLE)
                     icon = "⛔ EXPLOITED" if status == EXPLOITED else "⚠️ SUSCEPTIBLE"
-                    ev = props.get(f'{ac.lower()}_evidence', '')
-                    # Truncate evidence for table readability
-                    if len(ev) > 200:
-                        ev = ev[:197] + "..."
-                    lines.append(f"| **{ac}** | {icon} | {ev} |")
-                lines.append("")
-            else:
-                lines.append("No attack vectors detected on this field.")
+                    lines.append(f"| **{ac}** | {icon} |")
                 lines.append("")
 
-        # Detailed findings
-        lines.append("## All Findings")
-        lines.append("")
-        for f in findings:
-            icon = {CRITICAL:"🔴",HIGH:"🟠",MEDIUM:"🟡",INFO:"⚪"}.get(f.severity,"?")
-            lines.append(f"### {icon} [{f.severity}] [{f.attack_class}] {f.title}")
-            lines.append("")
-            lines.append(f.detail)
-            if f.repro_cmd:
-                lines.append("")
-                lines.append(f"**Reproduce:** `{f.repro_cmd}`")
-            lines.append("")
-
-        # Attack class explanations
+        # ============================================================
+        # REFERENCE
+        # ============================================================
         if attacks:
             lines.append("## Attack Class Reference")
             lines.append("")
@@ -310,7 +448,6 @@ class ForensicReport:
                     lines.append(body)
                     lines.append("")
 
-        # Footer
         lines.append("---")
         lines.append("")
         lines.append("*Generated by [PDF Shadow Attack Forensic Engine v2]"
@@ -487,11 +624,13 @@ class ForensicReport:
 
         if exploited_sigs:
             story.append(HRFlowable(width="100%", thickness=0.5, color=RULE_COLOR, spaceBefore=8))
-            story.append(Paragraph("Attacks Performed", S['h2']))
+            story.append(Paragraph("Crime Scene", S['h2']))
             story.append(Paragraph(
-                "The following are not theoretical vulnerabilities — the attack artifacts are "
-                "structurally embedded in this document, meaning the attacks were carried out "
-                "and the evidence is present in the binary structure of the PDF file.",
+                "This is not a vulnerability assessment. The artifacts below are not theoretical "
+                "weaknesses that could be exploited under the right conditions — they are the "
+                "structural residue of attacks that were already carried out. The perpetrator's "
+                "trail is not getting cold. It is embedded in the binary structure of this "
+                "document, and it will remain there for as long as the file exists.",
                 S['body']))
 
             for sr, ac in exploited_sigs:
@@ -587,13 +726,14 @@ class ForensicReport:
 
         if susceptible_sigs:
             story.append(HRFlowable(width="100%", thickness=0.5, color=RULE_COLOR, spaceBefore=12))
-            story.append(Paragraph("Vulnerabilities Present (Not Exploited)", S['h2']))
+            story.append(Paragraph("Ask Questions", S['h2']))
             story.append(Paragraph(
-                "The following issues represent weaknesses in the document's cryptographic "
-                "infrastructure that make it theoretically vulnerable to certain attack classes, "
-                "but there is no evidence in the document structure that these vulnerabilities "
-                "were actually exploited — think of them as unlocked doors that nobody walked "
-                "through.",
+                "The findings below describe a document that was created with dangerously "
+                "weak cryptographic infrastructure, but where nothing overtly suspicious has "
+                "happened yet. These are unlocked doors, not break-ins. The appropriate "
+                "response is not to rush to court — it is to ask questions. Ask who signed "
+                "it. Ask who issued the certificate. Ask the platform where the document "
+                "originated. Fraud survives because people don't ask such questions.",
                 S['body']))
 
             seen = set()
@@ -619,21 +759,29 @@ class ForensicReport:
                             f"(<font face='Courier'>{sr.properties.get('cert_subject','unknown')}</font>) "
                             f"is self-signed, meaning the signer issued their own credentials "
                             f"with no independent certificate authority vouching for their identity — "
-                            f"in everyday terms, this is like writing your own letter of reference.",
+                            f"in everyday terms, this is like writing your own letter of reference. "
+                            f"<b>Question to ask:</b> Who is the issuer of this certificate, and can "
+                            f"they independently confirm the signer's identity?",
                             S['finding']))
                     if sr.properties.get('cert_validity_years', 0) > 10:
                         y = sr.properties['cert_validity_years']
+                        na = sr.properties.get('cert_not_after', '')
                         story.append(Paragraph(
-                            f"The certificate is valid for <b>{y} years</b>, far beyond the "
-                            f"industry standard of 1 to 3 years, which means the same cryptographic "
+                            f"The certificate is valid for <b>{y} years</b> (until {na}), far beyond "
+                            f"the industry standard of 1 to 3 years, which means the same cryptographic "
                             f"key is used for decades without rotation, increasing the window of "
-                            f"exposure if the key is ever compromised.",
+                            f"exposure if the key is ever compromised. "
+                            f"<b>Question to ask:</b> What is the key rotation policy, and has the "
+                            f"private key ever been audited?",
                             S['finding']))
                     if 'pkcs1v15' in str(sr.properties.get('sig_alg', '')).lower():
                         story.append(Paragraph(
                             "The signature uses <b>PKCS#1 v1.5 padding</b>, which has been "
                             "deprecated in favor of PSS (v2.1) by RFC 8017 because v1.5 is "
-                            "deterministic and lacks a salt, making it theoretically exploitable.",
+                            "deterministic and lacks a salt, making it theoretically exploitable. "
+                            "<b>Question to ask:</b> Why is a 2024 document using cryptography "
+                            "that was deprecated years ago, and does the platform support modern "
+                            "alternatives?",
                             S['finding']))
                 elif ac == USF:
                     story.append(Paragraph(
@@ -641,7 +789,9 @@ class ForensicReport:
                         "information needed to validate it — either the ByteRange or the Contents "
                         "is absent, null, or malformed, meaning a PDF viewer that treats missing "
                         "validation data as \"no problem\" rather than \"no signature\" may display "
-                        "a green checkmark on a field that was never cryptographically verified.",
+                        "a green checkmark on a field that was never cryptographically verified. "
+                        "<b>Question to ask:</b> Was this field intended to be signed, and if so, "
+                        "why is the validation data missing?",
                         S['finding']))
 
         # ======== PER-SIGNATURE DETAIL ========
