@@ -12,12 +12,15 @@ The engine is running at **[sigcheck.leapcell.app/docs](https://sigcheck.leapcel
 
 ### View report in the browser (HTML)
 
-1. Open [sigcheck.leapcell.app/docs](https://sigcheck.leapcell.app/docs)
-2. Expand **POST /report/html**
-3. Click **Try it out**, then **Choose File** and select any signed PDF
-4. Click **Execute**
-5. In the response body, copy the `report_url` value
-6. Paste it into a new browser tab — the full forensic report renders as a styled HTML page
+The HTML endpoint returns a fully styled forensic report. From a terminal:
+
+```bash
+curl -X POST https://sigcheck.leapcell.app/report/html -F file=@document.pdf > report.html
+open report.html   # macOS
+start report.html  # Windows
+```
+
+In Swagger UI, the HTML renders as text in the response body — use the PDF or Markdown endpoints for the best Swagger experience, or use the curl command above for HTML.
 
 ### Download a PDF report
 
