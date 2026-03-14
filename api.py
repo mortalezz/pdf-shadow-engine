@@ -35,7 +35,7 @@ app = FastAPI(
     version="2.0.0",
     docs_url="/docs",
     redoc_url=None,
-    swagger_ui_parameters={"defaultModelsExpandDepth": -1},
+    swagger_ui_parameters={"defaultModelsExpandDepth": -1, "defaultModelRendering": "example", "showExtensions": False, "showCommonExtensions": False},
 )
 
 
@@ -61,7 +61,8 @@ def health():
 
 @app.post("/analyze", tags=["Analyze"],
           summary="JSON forensic report",
-          response_description="Structured JSON with verdict, attack classes, and per-signature findings")
+          response_description="Structured JSON with verdict, attack classes, and per-signature findings",
+          responses={422: {"description": "Invalid file"}})
 async def analyze_json(file: UploadFile = File(..., description="Signed PDF document to analyze")):
     """Upload a signed PDF and receive a structured JSON forensic report
     with verdict, attack class classification, and EXPLOITED / SUSCEPTIBLE
@@ -76,7 +77,8 @@ async def analyze_json(file: UploadFile = File(..., description="Signed PDF docu
 
 @app.post("/report/md", tags=["Reports"],
           summary="Markdown forensic report",
-          response_description="Downloadable .md file with full forensic analysis")
+          response_description="Downloadable .md file with full forensic analysis",
+          responses={422: {"description": "Invalid file"}})
 async def report_markdown(file: UploadFile = File(..., description="Signed PDF document to analyze")):
     """Upload a signed PDF and download a Markdown forensic report
     that renders natively on GitHub."""
@@ -95,7 +97,8 @@ async def report_markdown(file: UploadFile = File(..., description="Signed PDF d
 
 @app.post("/report/pdf", tags=["Reports"],
           summary="PDF forensic report",
-          response_description="Downloadable PDF with forensic analysis and sardonic commentary")
+          response_description="Downloadable PDF with forensic analysis and sardonic commentary",
+          responses={422: {"description": "Invalid file"}})
 async def report_pdf(file: UploadFile = File(..., description="Signed PDF document to analyze")):
     """Upload a signed PDF and download a professionally formatted PDF forensic report.
 
