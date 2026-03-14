@@ -83,7 +83,7 @@ async def report_html(file: UploadFile = File(..., description="Signed PDF to an
     the rendered report, copy the response text into a .html file and open
     it in a browser, or call this endpoint directly via curl and pipe to a file:
 
-        curl -X POST sigcheck.leapcell.app/report/html -F file=@doc.pdf > report.html
+        curl -X POST sigcheck.leapcell.app/report/html -F file=@doc.pdf -o report.html
     """
     path = _save_upload(file)
     try:

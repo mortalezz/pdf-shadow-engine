@@ -15,7 +15,7 @@ The engine is running at **[sigcheck.leapcell.app/docs](https://sigcheck.leapcel
 The HTML endpoint returns a fully styled forensic report. From a terminal:
 
 ```bash
-curl -X POST https://sigcheck.leapcell.app/report/html -F file=@document.pdf > report.html
+curl -X POST https://sigcheck.leapcell.app/report/html -F file=@document.pdf -o report.html
 open report.html   # macOS
 start report.html  # Windows
 ```
