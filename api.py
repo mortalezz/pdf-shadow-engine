@@ -15,14 +15,26 @@ from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse
 from pdf_forensic_engine import analyze
 
 app = FastAPI(
-    title="PDF Shadow Attack Forensic Engine",
+    title="SigCheck — PDF Signature Forensic Engine",
     description=(
-        "Upload a signed PDF, get back a forensic report classifying every "
-        "signature against five attack classes (USF, ISA, SWA, PKCS, SHADOW) "
-        "with EXPLOITED vs SUSCEPTIBLE distinction. "
-        "Implements Mladenov et al., CCS 2019 and Mainka et al., NDSS 2021."
+        "Upload a signed PDF and get back a forensic report that classifies every "
+        "digital signature against five attack classes from two peer-reviewed papers "
+        "by Ruhr University Bochum:\n\n"
+        "- **USF** — Universal Signature Forgery (CCS 2019)\n"
+        "- **ISA** — Incremental Saving Attack (CCS 2019)\n"
+        "- **SWA** — Signature Wrapping Attack (CCS 2019)\n"
+        "- **PKCS** — PKCS-based Attack (CCS 2019)\n"
+        "- **SHADOW** — Hide-and-Replace Shadow Attack (NDSS 2021)\n\n"
+        "Each finding is classified as **⛔ EXPLOITED** (attack was performed, "
+        "artifact is in the document) or **⚠️ SUSCEPTIBLE** (vulnerability exists, "
+        "no evidence of exploitation).\n\n"
+        "DocuSign envelopes with trusted CA infrastructure are automatically "
+        "greenlighted.\n\n"
+        "*Mladenov et al., ACM CCS 2019 — Mainka et al., NDSS 2021*"
     ),
     version="2.0.0",
+    docs_url="/docs",
+    redoc_url=None,
 )
 
 
@@ -41,14 +53,18 @@ def _save_upload(upload: UploadFile) -> str:
         raise
 
 
-@app.get("/health")
+@app.get("/health", include_in_schema=False)
 def health():
-    return {"status": "ok", "engine": "PDF Shadow Attack Forensic Engine v2"}
+    return {"status": "ok", "engine": "SigCheck v2"}
 
 
-@app.post("/analyze")
-async def analyze_json(file: UploadFile = File(...)):
-    """Upload a signed PDF, get JSON forensic report."""
+@app.post("/analyze", tags=["Analyze"],
+          summary="JSON forensic report",
+          response_description="Structured JSON with verdict, attack classes, and per-signature findings")
+async def analyze_json(file: UploadFile = File(..., description="Signed PDF document to analyze")):
+    """Upload a signed PDF and receive a structured JSON forensic report
+    with verdict, attack class classification, and EXPLOITED / SUSCEPTIBLE
+    status for every signature field."""
     path = _save_upload(file)
     try:
         report = analyze(path)
@@ -57,9 +73,12 @@ async def analyze_json(file: UploadFile = File(...)):
         os.unlink(path)
 
 
-@app.post("/report/md")
-async def report_markdown(file: UploadFile = File(...)):
-    """Upload a signed PDF, get Markdown forensic report."""
+@app.post("/report/md", tags=["Reports"],
+          summary="Markdown forensic report",
+          response_description="Downloadable .md file with full forensic analysis")
+async def report_markdown(file: UploadFile = File(..., description="Signed PDF document to analyze")):
+    """Upload a signed PDF and download a Markdown forensic report
+    that renders natively on GitHub."""
     path = _save_upload(file)
     try:
         report = analyze(path)
@@ -73,14 +92,15 @@ async def report_markdown(file: UploadFile = File(...)):
         os.unlink(path)
 
 
-@app.post("/report/pdf")
-async def report_pdf(file: UploadFile = File(...)):
-    """Upload a signed PDF, get PDF forensic report.
+@app.post("/report/pdf", tags=["Reports"],
+          summary="PDF forensic report",
+          response_description="Downloadable PDF with forensic analysis and sardonic commentary")
+async def report_pdf(file: UploadFile = File(..., description="Signed PDF document to analyze")):
+    """Upload a signed PDF and download a professionally formatted PDF forensic report.
 
     Yes, the tool that forensically dismantles PDF signature fraud
     outputs its findings as a PDF. The format is not the problem.
-    The implementation is.
-    """
+    The implementation is."""
     path = _save_upload(file)
     out_path = path.replace('.pdf', '_report.pdf')
     try:
@@ -95,6 +115,5 @@ async def report_pdf(file: UploadFile = File(...)):
     finally:
         os.unlink(path)
         if os.path.exists(out_path):
-            # FileResponse reads it before this fires — schedule cleanup
             import atexit
             atexit.register(lambda p=out_path: os.path.exists(p) and os.unlink(p))
