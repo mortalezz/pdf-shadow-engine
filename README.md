@@ -6,6 +6,21 @@ Every signed PDF has some theoretical attack surface — deprecated padding, sel
 
 The distinction between EXPLOITED and SUSCEPTIBLE is the entire point of this tool. If the same platform, in the same signing session, produces a proper text-based signature for one signer and a bitmap-only image with alpha transparency for another, that is not a vulnerability scan finding — that is a crime scene.
 
+## Live Demo
+
+The engine is running at **[sigcheck.leapcell.app/docs](https://sigcheck.leapcell.app/docs)** — no installation required, just a browser and a signed PDF.
+
+To generate a PDF forensic report:
+
+1. Open [sigcheck.leapcell.app/docs](https://sigcheck.leapcell.app/docs)
+2. Expand **POST /report/pdf**
+3. Click **Try it out**
+4. Click **Choose File** and select any signed PDF
+5. Click **Execute**
+6. Click **Download file** when the report appears
+
+JSON and Markdown reports are available through the other two endpoints in the same interface. No documents are stored — uploaded files are deleted from memory immediately after processing and the serverless container retains no persistent storage between requests.
+
 ## The Research
 
 This engine implements the verification algorithm published by researchers at Ruhr University Bochum in two landmark papers on PDF signature security.
