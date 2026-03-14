@@ -124,6 +124,8 @@ python3 pdf_forensic_engine.py suspect.pdf --compare control.pdf   # compare two
 
 Yes, the tool that forensically dismantles PDF signature fraud outputs its findings as a PDF. The format is not the problem. The implementation is.
 
+For an example of the engine's output, see [`examples/sample_report.md`](examples/sample_report.md).
+
 Exit codes: `0` for clean, `1` for HIGH findings (susceptible), `2` for CRITICAL findings (exploited).
 
 ## Responsible Disclosure
