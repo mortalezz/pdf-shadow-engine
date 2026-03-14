@@ -401,12 +401,14 @@ class ForensicReport:
 
         # ======== TITLE BLOCK ========
         story.append(Paragraph("PDF Shadow Attack", S['title']))
-        story.append(Paragraph("Forensic Report", S['title']))
         story.append(Spacer(1, 2))
+        story.append(Paragraph("Forensic Report", S['title']))
+        story.append(Spacer(1, 8))
         story.append(Paragraph(
             "Mladenov et al., ACM CCS 2019 &nbsp;|&nbsp; Mainka et al., NDSS 2021",
             S['tagline']))
-        story.append(HRFlowable(width="100%", thickness=1.5, color=SLATE, spaceAfter=10))
+        story.append(Spacer(1, 4))
+        story.append(HRFlowable(width="100%", thickness=1.5, color=SLATE, spaceAfter=12))
         story.append(Paragraph(
             f"<b>File:</b> {self.filename} &nbsp;&nbsp;&nbsp; "
             f"<b>Size:</b> {self.filesize:,} bytes &nbsp;&nbsp;&nbsp; "
@@ -525,18 +527,17 @@ class ForensicReport:
                             f"overlay. In physical document terms, this is the equivalent of cutting a "
                             f"signature out of one document with scissors and gluing it onto another — "
                             f"except the scissors are digital, the glue is a PDF XObject reference, "
-                            f"and the document is an employment agreement that binds someone to an "
-                            f"arbitration clause.",
+                            f"and the document is someone's signed contract.",
                             S['sardonic']))
 
                     green_sigs = [s for s in self.sig_reports
                                   if 'GREEN' in s.properties.get('appearance', '')]
                     if green_sigs:
                         gs = green_sigs[0]
-                        signer = gs.properties.get('signer', 'the HR countersigner')
+                        signer = gs.properties.get('signer', 'the countersigner')
                         story.append(Paragraph(
                             f"The proof is on the same page. The <b>{gs.field_name}</b> field, signed "
-                            f"by {signer}, uses the same eStaff365 certificate, the same PKCS#7 "
+                            f"by {signer}, uses the same certificate, the same PKCS#7 "
                             f"infrastructure, and the same platform — and it produced a proper "
                             f"text-based signature with \"Digitally signed by\" rendering. The platform "
                             f"is demonstrably capable of producing correct output. It chose not to "
@@ -556,7 +557,7 @@ class ForensicReport:
                         f"<font face='Courier'>c+d</font> must equal the file size. In this "
                         f"document, the ByteRange ends at byte {br_end:,} but the file continues "
                         f"to byte {fsize:,}, leaving <b>{gap:,} bytes</b> of unsigned content "
-                        f"that anyone could have appended after the employee signed.",
+                        f"that anyone could have appended after the first signer signed.",
                         S['finding']))
 
                     if redefined:
@@ -1345,7 +1346,7 @@ def _classify_exploited(report):
     Proof by comparison: if the SAME platform, in the SAME document, produces
     text-based appearances for other signature fields, then the bitmap-only field
     was selectively modified. The platform is capable of producing proper signatures.
-    It produced one for Kelli Bates. It did not produce one for the employee.
+    It produced one for one signer. It did not produce one for the other.
     """
     for sr in report.sig_reports:
         ap = sr.properties.get('appearance', '')
