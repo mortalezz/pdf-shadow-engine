@@ -10,16 +10,26 @@ The distinction between EXPLOITED and SUSCEPTIBLE is the entire point of this to
 
 The engine is running at **[sigcheck.leapcell.app/docs](https://sigcheck.leapcell.app/docs)** — no installation required, just a browser and a signed PDF.
 
-To generate a PDF forensic report:
+### View report in the browser (HTML)
 
 1. Open [sigcheck.leapcell.app/docs](https://sigcheck.leapcell.app/docs)
-2. Expand **POST /report/pdf**
-3. Click **Try it out**
-4. Click **Choose File** and select any signed PDF
-5. Click **Execute**
-6. Click **Download file** when the report appears
+2. Expand **POST /report/html**
+3. Click **Try it out**, then **Choose File** and select any signed PDF
+4. Click **Execute**
+5. In the response body, copy the `report_url` value
+6. Paste it into a new browser tab — the full forensic report renders as a styled HTML page
 
-JSON and Markdown reports are available through the other two endpoints in the same interface. No documents are stored — uploaded files are deleted from memory immediately after processing and the serverless container retains no persistent storage between requests.
+### Download a PDF report
+
+1. Expand **POST /report/pdf**
+2. Click **Try it out**, upload your PDF, click **Execute**
+3. Click **Download file** when the response appears
+
+### Other formats
+
+The **POST /analyze** endpoint returns raw JSON for programmatic consumption, and **POST /report/md** returns a Markdown file that renders natively on GitHub.
+
+No documents are stored — uploaded files are deleted from memory immediately after processing and the serverless container retains no persistent storage between requests.
 
 ## The Research
 
@@ -107,7 +117,7 @@ The final classifier maps structural evidence to the distinction between perform
 ## Architecture
 
 ```
-pdf_forensic_engine.py    (916 lines, single file, no framework dependencies)
+pdf_forensic_engine.py    (single file, no framework dependencies)
 ├── DocuSign greenlight   (trusted platform bypass)
 ├── CCS 2019 Listing 2    (ByteRange verification — USF/ISA/SWA gate)
 ├── PKCS#7 analysis       (hash verification, cert chain, padding)
@@ -129,12 +139,13 @@ Python 3.8 or later required. Dependencies: `asn1crypto` for PKCS#7 parsing, `re
 ## Usage
 
 ```bash
-python3 pdf_forensic_engine.py document.pdf                        # terminal report
-python3 pdf_forensic_engine.py document.pdf --json                 # JSON output
-python3 pdf_forensic_engine.py document.pdf --json -o report.json  # JSON to file
-python3 pdf_forensic_engine.py document.pdf --report findings.md   # Markdown report
-python3 pdf_forensic_engine.py document.pdf --pdf-report report.pdf # PDF report
-python3 pdf_forensic_engine.py suspect.pdf --compare control.pdf   # compare two docs
+python3 pdf_forensic_engine.py document.pdf                          # terminal report
+python3 pdf_forensic_engine.py document.pdf --json                   # JSON output
+python3 pdf_forensic_engine.py document.pdf --json -o report.json    # JSON to file
+python3 pdf_forensic_engine.py document.pdf --report findings.md     # Markdown report
+python3 pdf_forensic_engine.py document.pdf --pdf-report report.pdf  # PDF report
+python3 pdf_forensic_engine.py document.pdf --html-report report.html # HTML report
+python3 pdf_forensic_engine.py suspect.pdf --compare control.pdf     # compare two docs
 ```
 
 Yes, the tool that forensically dismantles PDF signature fraud outputs its findings as a PDF. The format is not the problem. The implementation is.

@@ -1946,6 +1946,7 @@ def main():
     ap.add_argument('--json', action='store_true', help='Output as JSON')
     ap.add_argument('--report', metavar='FILE', help='Generate Markdown report')
     ap.add_argument('--pdf-report', metavar='FILE', help='Generate PDF report')
+    ap.add_argument('--html-report', metavar='FILE', help='Generate HTML report')
     ap.add_argument('--compare', metavar='CONTROL', help='Compare against control document')
     ap.add_argument('-o', '--output', metavar='FILE', help='Save JSON to file')
     args = ap.parse_args()
@@ -1973,7 +1974,13 @@ def main():
         report.to_pdf(args.pdf_report)
         print(f"PDF report saved: {args.pdf_report}")
 
-    if not args.report and not args.pdf_report:
+    if args.html_report:
+        html = report.to_html()
+        with open(args.html_report, 'w') as f:
+            f.write(html)
+        print(f"HTML report saved: {args.html_report}")
+
+    if not args.report and not args.pdf_report and not args.html_report:
         if args.json:
             out = report.to_json()
             if args.output:
