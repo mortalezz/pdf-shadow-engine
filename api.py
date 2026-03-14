@@ -8,7 +8,7 @@ import os
 import tempfile
 import shutil
 from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse, HTMLResponse
 from pdf_forensic_engine import analyze
 
 RESPONSES = {200: {"description": "Success"}, 422: {"description": "Invalid file"}}
@@ -69,6 +69,19 @@ async def analyze_json(file: UploadFile = File(..., description="Signed PDF to a
     try:
         report = analyze(path)
         return JSONResponse(content=report.to_dict())
+    finally:
+        os.unlink(path)
+
+
+@app.post("/report/html", tags=["Reports"],
+          summary="HTML forensic report (view in browser)",
+          responses=RESPONSES)
+async def report_html(file: UploadFile = File(..., description="Signed PDF to analyze")):
+    """Upload a signed PDF and view the forensic report directly in the browser."""
+    path = _save_upload(file)
+    try:
+        report = analyze(path)
+        return HTMLResponse(content=report.to_html())
     finally:
         os.unlink(path)
 

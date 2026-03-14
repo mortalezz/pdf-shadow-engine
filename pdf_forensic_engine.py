@@ -920,8 +920,335 @@ class ForensicReport:
 
         doc.build(story)
 
+    def to_html(self):
+        attacks, findings = self._all()
+        has_exploited = any(
+            sr.properties.get(f'{ac.lower()}_status') == EXPLOITED
+            for sr in self.sig_reports for ac in sr.attack_classes)
 
-    def print_report(self):
+        v = self._verdict(attacks, findings)
+        sevs = [f.severity for f in findings]
+        if CRITICAL in sevs:
+            verdict_class = "verdict-red"
+        elif HIGH in sevs:
+            verdict_class = "verdict-amber"
+        else:
+            verdict_class = "verdict-green"
+
+        exploited_pairs = [(sr, ac) for sr in self.sig_reports
+                           for ac in sr.attack_classes
+                           if sr.properties.get(f'{ac.lower()}_status') == EXPLOITED]
+        susceptible_pairs = [(sr, ac) for sr in self.sig_reports
+                              for ac in sr.attack_classes
+                              if sr.properties.get(f'{ac.lower()}_status', SUSCEPTIBLE) == SUSCEPTIBLE
+                              and sr.properties.get(f'{ac.lower()}_status') != 'N/A']
+
+        def esc(s):
+            return str(s).replace('&','&amp;').replace('<','&lt;').replace('>','&gt;')
+
+        h = []
+        h.append('<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">')
+        h.append('<meta name="viewport" content="width=device-width, initial-scale=1">')
+        h.append(f'<title>SigCheck Report: {esc(self.filename)}</title>')
+        h.append('<style>')
+        h.append('''
+:root {
+  --crimson: #B71C1C; --crimson-light: #FFCDD2; --crimson-bg: #FFF5F5;
+  --amber: #E65100; --amber-light: #FFE0B2; --amber-bg: #FFFBF0;
+  --forest: #1B5E20; --forest-light: #C8E6C9; --forest-bg: #F1F8F1;
+  --navy: #0D47A1; --navy-light: #BBDEFB;
+  --slate: #1A1A2E; --slate-mid: #4A4A5A;
+  --text: #2A2A2A; --text-light: #666;
+  --bg: #FAFAFA; --card: #FFF; --rule: #E0E0E0;
+  --code-bg: #ECEFF1; --radius: 8px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+       background: var(--bg); color: var(--text); line-height: 1.6; }
+.wrap { max-width: 900px; margin: 0 auto; padding: 24px 20px; }
+header { border-bottom: 3px solid var(--slate); padding-bottom: 16px; margin-bottom: 24px; }
+header h1 { font-size: 28px; color: var(--slate); margin-bottom: 2px; }
+header h1 span { font-weight: 400; }
+header .tagline { font-size: 12px; color: var(--slate-mid); margin-bottom: 10px; }
+header .meta { font-size: 13px; color: var(--text-light); }
+header .meta b { color: var(--text); }
+.verdict { padding: 14px 20px; border-radius: var(--radius); font-size: 17px;
+           font-weight: 700; color: #FFF; margin-bottom: 28px; }
+.verdict-red { background: var(--crimson); }
+.verdict-amber { background: var(--amber); }
+.verdict-green { background: var(--forest); }
+section { margin-bottom: 32px; }
+section h2 { font-size: 20px; color: var(--slate); border-bottom: 2px solid var(--rule);
+             padding-bottom: 6px; margin-bottom: 14px; }
+section h2.crime { border-color: var(--crimson); }
+section h2.questions { border-color: var(--amber); }
+.attack-card { background: var(--card); border-radius: var(--radius);
+               padding: 18px 20px; margin-bottom: 16px;
+               box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.attack-card.red { border-left: 4px solid var(--crimson); }
+.attack-card.yellow { border-left: 4px solid var(--amber); }
+.attack-card h3 { font-size: 15px; margin-bottom: 10px; }
+.attack-card h3 .tag { display: inline-block; font-size: 11px; font-weight: 700;
+                        padding: 2px 8px; border-radius: 4px; margin-right: 8px;
+                        text-transform: uppercase; }
+.tag-exploited { background: var(--crimson-light); color: var(--crimson); }
+.tag-susceptible { background: var(--amber-light); color: var(--amber); }
+.attack-card p { margin-bottom: 10px; font-size: 14px; }
+.attack-card .sardonic { font-style: italic; color: var(--slate-mid); }
+.attack-card .question { font-weight: 600; }
+pre { background: var(--code-bg); padding: 14px 16px; border-radius: 6px;
+      font-size: 13px; font-family: 'SF Mono', Consolas, monospace;
+      overflow-x: auto; margin: 10px 0; color: #263238; }
+code { font-family: 'SF Mono', Consolas, monospace; font-size: 13px;
+       background: var(--code-bg); padding: 1px 5px; border-radius: 3px; }
+.sig-card { background: var(--card); border-radius: var(--radius);
+            padding: 18px 20px; margin-bottom: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.sig-card.sig-red { border-left: 4px solid var(--crimson); }
+.sig-card.sig-green { border-left: 4px solid var(--forest); }
+.sig-card.sig-yellow { border-left: 4px solid var(--amber); }
+.sig-card h3 { font-size: 15px; margin-bottom: 10px; }
+.props { display: grid; grid-template-columns: 160px 1fr; gap: 4px 12px;
+         font-size: 13px; margin-bottom: 12px; }
+.props dt { font-weight: 600; color: var(--slate-mid); }
+.props dd { color: var(--text); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+th { background: var(--navy); color: #FFF; text-align: left;
+     padding: 8px 12px; font-weight: 600; }
+td { padding: 8px 12px; border-bottom: 1px solid var(--rule); }
+tr.row-exploited { background: var(--crimson-bg); }
+tr.row-exploited td:last-child { color: var(--crimson); font-weight: 700; }
+tr.row-susceptible { background: var(--amber-bg); }
+tr.row-susceptible td:last-child { color: var(--amber); }
+.ref-card { background: var(--card); border-radius: var(--radius);
+            border-left: 4px solid var(--navy); padding: 14px 18px;
+            margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.ref-card h3 { font-size: 14px; color: var(--navy); margin-bottom: 6px; }
+.ref-card p { font-size: 13px; }
+footer { border-top: 1px solid var(--rule); padding-top: 12px; margin-top: 32px;
+         font-size: 11px; color: #AAA; font-style: italic; }
+.privacy { font-size: 11px; color: var(--text-light); background: var(--code-bg);
+           padding: 8px 12px; border-radius: var(--radius); margin-bottom: 24px; }
+''')
+        h.append('</style></head><body><div class="wrap">')
+
+        # HEADER
+        h.append('<header>')
+        h.append('<h1>SigCheck <span>Forensic Report</span></h1>')
+        h.append('<div class="tagline">Mladenov et al., ACM CCS 2019 · Mainka et al., NDSS 2021</div>')
+        h.append(f'<div class="meta"><b>File:</b> {esc(self.filename)} · '
+                 f'<b>Size:</b> {self.filesize:,} bytes · '
+                 f'<b>Scan:</b> {self.timestamp}</div>')
+        h.append('</header>')
+
+        # PRIVACY
+        h.append('<div class="privacy">🔒 No documents are stored. Uploaded files are deleted '
+                 'from memory immediately after processing.</div>')
+
+        # VERDICT
+        h.append(f'<div class="verdict {verdict_class}">VERDICT: {esc(v)}</div>')
+
+        # CRIME SCENE
+        if exploited_pairs:
+            h.append('<section>')
+            h.append('<h2 class="crime">🔴 Crime Scene</h2>')
+            h.append('<p>This is not a vulnerability assessment. The artifacts below are not '
+                     'theoretical weaknesses — they are the structural residue of attacks that '
+                     'were already carried out. The perpetrator\'s trail is not getting cold. It '
+                     'is embedded in the binary structure of this document, and it will remain '
+                     'there for as long as the file exists.</p>')
+
+            for sr, ac in exploited_pairs:
+                h.append('<div class="attack-card red">')
+                h.append(f'<h3><span class="tag tag-exploited">⛔ Exploited</span> '
+                         f'{esc(ac)} — <code>{esc(sr.field_name)}</code></h3>')
+
+                if ac == SHADOW:
+                    bsize = sr.properties.get('bitmap_size', 'unknown')
+                    h.append(
+                        f'<p>A successful Hide-and-Replace Shadow Attack is impossible without '
+                        f'leaving a structural artifact in the appearance stream of the targeted '
+                        f'signature field, and that artifact is clearly present here: the '
+                        f'appearance stream contains an image rendering operator (<code>Do</code>) '
+                        f'referencing a {esc(bsize)}-pixel bitmap with <b>zero</b> text rendering '
+                        f'operators (<code>TJ/Tj</code>). The standard text that every legitimate '
+                        f'e-signature platform produces — "Digitally signed by [Name]" — is '
+                        f'entirely absent. A picture was placed where a cryptographic identity '
+                        f'should be.</p>')
+
+                    if sr.properties.get('bitmap_alpha'):
+                        h.append(
+                            '<p class="sardonic">The injected bitmap includes an alpha transparency '
+                            'mask (<code>/SMask</code>), which enables background-free overlay — '
+                            'the digital equivalent of cutting a signature out of one document with '
+                            'scissors and gluing it onto another, except the scissors are digital, '
+                            'the glue is a PDF XObject reference, and the document is someone\'s '
+                            'signed contract.</p>')
+
+                    green_sigs = [s for s in self.sig_reports
+                                  if 'GREEN' in s.properties.get('appearance', '')]
+                    if green_sigs:
+                        gs = green_sigs[0]
+                        signer = esc(gs.properties.get('signer', 'the countersigner'))
+                        h.append(
+                            f'<p>The proof is on the same page. The <code>{esc(gs.field_name)}</code> '
+                            f'field, signed by {signer}, uses the same certificate, the same PKCS#7 '
+                            f'infrastructure, and the same platform — and it produced a proper '
+                            f'text-based signature with "Digitally signed by" rendering. The platform '
+                            f'is demonstrably capable of producing correct output. It chose not to '
+                            f'produce correct output for this field.</p>')
+
+                elif ac == ISA:
+                    br = sr.properties.get('byterange', [0,0,0,0])
+                    br_end = sr.properties.get('byterange_end', 0)
+                    fsize = sr.properties.get('filesize', 0)
+                    gap = fsize - br_end
+                    redefined = self.metadata.get('objects_redefined', [])
+                    h.append(
+                        f'<p>An Incremental Saving Attack appends content beyond the signed byte '
+                        f'range without invalidating the signature\'s hash. The CCS 2019 '
+                        f'verification algorithm (Listing 2, Line 20) requires that <code>c+d</code> '
+                        f'must equal the file size. In this document, the ByteRange ends at byte '
+                        f'{br_end:,} but the file continues to byte {fsize:,}, leaving '
+                        f'<b>{gap:,} bytes</b> of unsigned content that anyone could have appended '
+                        f'after the first signer signed.</p>')
+
+                    if redefined:
+                        h.append(
+                            f'<p>This is not a hypothetical gap — Objects <code>{esc(redefined)}</code> '
+                            f'were redefined in the incremental update section after the first '
+                            f'<code>%%EOF</code> marker. The ISA was not merely possible. It was '
+                            f'performed, and the redefined objects are the structural evidence.</p>')
+
+                    h.append(f'<pre>ByteRange:         [{br[0]}  {br[1]}  {br[2]}  {br[3]}]\n'
+                             f'ByteRange end:     {br_end:,}\n'
+                             f'File size:         {fsize:,}\n'
+                             f'Unsigned gap:      {gap:,} bytes\n'
+                             f'Objects redefined: {redefined}</pre>')
+
+                h.append('</div>')
+            h.append('</section>')
+
+        # ASK QUESTIONS
+        if susceptible_pairs:
+            h.append('<section>')
+            h.append('<h2 class="questions">🟡 Ask Questions</h2>')
+            h.append('<p>The findings below describe a document that was created with dangerously '
+                     'weak cryptographic infrastructure, but where nothing overtly suspicious has '
+                     'happened yet. These are unlocked doors, not break-ins. The appropriate '
+                     'response is not to rush to court — it is to ask questions. Ask who signed '
+                     'it. Ask who issued the certificate. Ask the platform where the document '
+                     'originated. Fraud survives because people don\'t ask such questions.</p>')
+
+            seen = set()
+            for sr, ac in susceptible_pairs:
+                key = (sr.field_name, ac)
+                if key in seen: continue
+                seen.add(key)
+
+                h.append('<div class="attack-card yellow">')
+                h.append(f'<h3><span class="tag tag-susceptible">⚠️ Susceptible</span> '
+                         f'{esc(ac)} — <code>{esc(sr.field_name)}</code></h3>')
+
+                if ac == PKCS:
+                    if sr.properties.get('cert_self_signed'):
+                        cert = esc(sr.properties.get('cert_subject', 'unknown'))
+                        h.append(
+                            f'<p>The certificate (<code>{cert}</code>) is self-signed, meaning '
+                            f'the signer issued their own credentials with no independent certificate '
+                            f'authority vouching for their identity — in everyday terms, this is like '
+                            f'writing your own letter of reference. '
+                            f'<span class="question">Question to ask:</span> Who is the issuer of '
+                            f'this certificate, and can they independently confirm the signer\'s '
+                            f'identity?</p>')
+                    if sr.properties.get('cert_validity_years', 0) > 10:
+                        y = sr.properties['cert_validity_years']
+                        na = esc(sr.properties.get('cert_not_after', ''))
+                        h.append(
+                            f'<p>The certificate is valid for <b>{y} years</b> (until {na}), far '
+                            f'beyond the industry standard of 1 to 3 years, which means the same '
+                            f'cryptographic key will be used for decades without rotation. '
+                            f'<span class="question">Question to ask:</span> What is the key '
+                            f'rotation policy, and has the private key ever been audited?</p>')
+                    if 'pkcs1v15' in str(sr.properties.get('sig_alg', '')).lower():
+                        h.append(
+                            '<p>The signature uses <b>PKCS#1 v1.5 padding</b>, deprecated in favor '
+                            'of PSS (v2.1) by RFC 8017. '
+                            '<span class="question">Question to ask:</span> Why is this document '
+                            'using cryptography that was deprecated years ago?</p>')
+                elif ac == USF:
+                    h.append(
+                        '<p>This signature field exists but is missing the information needed to '
+                        'validate it — either the ByteRange or the Contents is absent, null, or '
+                        'malformed. <span class="question">Question to ask:</span> Was this field '
+                        'intended to be signed, and if so, why is the validation data missing?</p>')
+
+                h.append('</div>')
+            h.append('</section>')
+
+        # SIGNATURE DETAIL
+        h.append('<section>')
+        h.append('<h2>Signature Detail</h2>')
+        for sr in self.sig_reports:
+            ap = sr.properties.get('appearance', '')
+            card_class = 'sig-red' if 'RED' in ap else 'sig-green' if 'GREEN' in ap else 'sig-yellow'
+            h.append(f'<div class="sig-card {card_class}">')
+            h.append(f'<h3><code>{esc(sr.field_name)}</code></h3>')
+
+            props = sr.properties
+            h.append('<dl class="props">')
+            prop_map = [
+                ('timestamp', 'Signed'), ('signer', 'Signer'),
+                ('cert_subject', 'Certificate'), ('cert_self_signed', 'Self-signed'),
+                ('appearance', 'Appearance'), ('hash_valid', 'Hash valid'),
+                ('hash_type', 'Hash type'),
+            ]
+            for key, label in prop_map:
+                val = props.get(key)
+                if val is not None:
+                    h.append(f'<dt>{label}</dt><dd>{esc(val)}</dd>')
+            if props.get('byterange'):
+                br = props['byterange']
+                h.append(f'<dt>ByteRange</dt><dd><code>[{br[0]}, {br[1]}, {br[2]}, {br[3]}]</code></dd>')
+                h.append(f'<dt>Covers file</dt><dd>{props.get("covers_entire_file", "unknown")}</dd>')
+            if props.get('bitmap_size'):
+                alpha = " + alpha" if props.get('bitmap_alpha') else ""
+                h.append(f'<dt>Bitmap</dt><dd>{esc(props["bitmap_size"])}{alpha}</dd>')
+            h.append('</dl>')
+
+            if sr.attack_classes:
+                h.append('<table><tr><th>Attack Class</th><th>Status</th></tr>')
+                for ac in sorted(sr.attack_classes):
+                    status = props.get(f'{ac.lower()}_status', SUSCEPTIBLE)
+                    row_class = 'row-exploited' if status == EXPLOITED else 'row-susceptible'
+                    label = 'EXPLOITED' if status == EXPLOITED else 'SUSCEPTIBLE'
+                    h.append(f'<tr class="{row_class}"><td><b>{esc(ac)}</b></td><td>{label}</td></tr>')
+                h.append('</table>')
+
+            h.append('</div>')
+        h.append('</section>')
+
+        # REFERENCE
+        if attacks:
+            h.append('<section>')
+            h.append('<h2>Attack Class Reference</h2>')
+            for ac in sorted(attacks):
+                exp = ATTACK_EXPLANATIONS.get(ac, '')
+                if exp:
+                    title = exp.split('\n')[0]
+                    body = '\n'.join(exp.split('\n')[1:]).strip()
+                    h.append(f'<div class="ref-card"><h3>{esc(title)}</h3>'
+                             f'<p>{esc(body)}</p></div>')
+            h.append('</section>')
+
+        # FOOTER
+        h.append('<footer>Generated by SigCheck — PDF Shadow Attack Forensic Engine v2. '
+                 'Implements Mladenov et al., CCS 2019 and Mainka et al., NDSS 2021.</footer>')
+        h.append('</div></body></html>')
+
+        return '\n'.join(h)
+
+
         attacks, findings = self._all()
         print("=" * 72)
         print("  PDF SHADOW ATTACK FORENSIC ENGINE v2")
