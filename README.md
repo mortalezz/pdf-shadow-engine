@@ -8,7 +8,11 @@ The distinction between EXPLOITED and SUSCEPTIBLE is the entire point of this to
 
 ## Live Demo
 
-The engine is running at **[sigcheck.leapcell.app/docs](https://sigcheck.leapcell.app/docs)** — no installation required, just a browser and a signed PDF.
+**Web app:** [sigcheck-app.leapcell.app](https://sigcheck-app.leapcell.app) — drag and drop a signed PDF, get a forensic report in your browser.
+
+**API + Swagger UI:** [sigcheck.leapcell.app/docs](https://sigcheck.leapcell.app/docs) — upload via interactive docs or call the endpoints directly from code.
+
+No installation required for either. Just a browser and a signed PDF.
 
 ### View report in the browser (HTML)
 
@@ -117,6 +121,21 @@ If the same document contains both RED (bitmap-only) and GREEN (text-based) sign
 
 The final classifier maps structural evidence to the distinction between performed attacks and theoretical vulnerabilities — a bitmap-only appearance with alpha transparency on a field where the same platform demonstrably produces text for other signers is classified as EXPLOITED because the bitmap is the attack artifact and the absent text is the replaced content.
 
+## API
+
+The engine is served via [FastAPI](https://fastapi.tiangolo.com) with four endpoints:
+
+| Endpoint | Format | Description |
+|----------|--------|-------------|
+| `POST /analyze` | JSON | Structured forensic data for programmatic consumption |
+| `POST /report/html` | HTML | Styled report viewable in a browser |
+| `POST /report/md` | Markdown | GitHub-renderable report |
+| `POST /report/pdf` | PDF | Downloadable report for court filings and sharing |
+
+Interactive documentation is auto-generated at `/docs` via Swagger UI. The source is in [`api.py`](api.py) — 120 lines wrapping the engine with file upload handling, CORS, and response formatting.
+
+The frontend ([sigcheck-frontend](https://github.com/mortalezz/sigcheck-frontend)) is a separate React app that calls these endpoints.
+
 ## Architecture
 
 ```
@@ -127,12 +146,18 @@ pdf_forensic_engine.py    (single file, no framework dependencies)
 ├── Appearance analysis   (TJ/Tj vs Do — bitmap detection)
 ├── Cross-sig comparison  (RED vs GREEN on same document)
 └── EXPLOITED classifier  (artifact-based attack confirmation)
+
+api.py                    (FastAPI wrapper)
+├── POST /analyze         (JSON)
+├── POST /report/html     (HTML)
+├── POST /report/md       (Markdown)
+└── POST /report/pdf      (PDF)
 ```
 
 ## Installation
 
 ```bash
-git clone https://github.com/your-repo/pdf-shadow-engine.git
+git clone https://github.com/mortalezz/pdf-shadow-engine.git
 cd pdf-shadow-engine
 pip install -r requirements.txt
 ```
