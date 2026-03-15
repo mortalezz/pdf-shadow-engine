@@ -8,6 +8,7 @@ import os
 import tempfile
 import shutil
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse, HTMLResponse
 from pdf_forensic_engine import analyze
 
@@ -38,6 +39,17 @@ app = FastAPI(
         "defaultModelsExpandDepth": -1,
         "defaultModelRendering": "example",
     },
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://sigcheck-app.leapcell.app",
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
