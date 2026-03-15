@@ -90,11 +90,23 @@ Signature: [HR Countersignature]
 
 Same platform, same session, same certificate — one field was attacked and the other was not, which proves both that the platform is capable of correct output and that it selectively did not produce correct output for the affected field.
 
+## Scope and Greenlighting
+
+This engine checks documents that use **AcroForm-based digital signatures** — the PDF signing mechanism defined in the Adobe PDF specification where signature fields (`/FT /Sig`), signature dictionaries (`/Type /Sig`), ByteRange arrays, and PKCS#7 cryptographic containers are embedded in the document structure. All five attack classes (USF, ISA, SWA, PKCS, SHADOW) target specifically this infrastructure and cannot exist in documents that don't use it.
+
+The engine greenlights a document — stops analysis and reports no attack surface — in two cases:
+
+**DocuSign envelopes:** DocuSign uses CA-issued certificates, RFC 3161 timestamps, and containers validated by Adobe's Approved Trust List (AATL). The Bochum researchers tested their attacks against documents with weaker infrastructure. DocuSign's signing pipeline does not produce the vulnerabilities that enable those attacks.
+
+**No AcroForm signatures detected:** If the engine finds no `/FT /Sig` form fields, no `/Type /Sig` dictionaries, no ByteRange arrays, and no PKCS#7 containers, the document was not signed using AcroForm infrastructure. Platforms like ApproveMe, HelloSign, PandaDoc, and similar e-signature services that use visual image stamps rather than AcroForm certificate infrastructure produce documents that are outside the scope of this engine. A simple visual check can still validate any electronic signature: look for the signer's identity linked to a timestamp in the same signature block — what Adobe identifies as the most critical component of digital signature compliance.
+
+The engine is not here to validate every freestyle PDF signature in the world — that would be an incredibly tall order. It is here to check documents where the AcroForm signing infrastructure creates the specific attack surface that the Bochum papers describe. If the engine greenlights a document, that document is free from that attack surface.
+
 ## How It Works
 
-### Gate 1: DocuSign Greenlight
+### Gate 1: AcroForm Detection and Greenlight
 
-If the document is a DocuSign envelope with trusted CA infrastructure, analysis stops immediately because DocuSign is the industry baseline for legally defensible electronic signatures and the engine is not here to audit DocuSign — it exists to catch everything that isn't.
+The engine first checks for DocuSign envelope markers and, if absent, searches for AcroForm signature infrastructure (`/FT /Sig`, `/Type /Sig`, ByteRange, PKCS#7). If none is found, the document is greenlighted immediately. If AcroForm signatures are present, analysis proceeds through the full verification pipeline.
 
 ### Gate 2: CCS 2019 Listing 2 Verification Algorithm
 
