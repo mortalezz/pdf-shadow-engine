@@ -80,6 +80,7 @@ async def analyze_json(file: UploadFile = File(..., description="Signed PDF to a
     path = _save_upload(file)
     try:
         report = analyze(path)
+        report.filename = file.filename
         return JSONResponse(content=report.to_dict())
     finally:
         os.unlink(path)
@@ -100,6 +101,7 @@ async def report_html(file: UploadFile = File(..., description="Signed PDF to an
     path = _save_upload(file)
     try:
         report = analyze(path)
+        report.filename = file.filename
         return HTMLResponse(content=report.to_html())
     finally:
         os.unlink(path)
@@ -113,6 +115,7 @@ async def report_markdown(file: UploadFile = File(..., description="Signed PDF t
     path = _save_upload(file)
     try:
         report = analyze(path)
+        report.filename = file.filename
         md = report.to_markdown()
         return PlainTextResponse(
             content=md,
@@ -136,6 +139,7 @@ async def report_pdf(file: UploadFile = File(..., description="Signed PDF to ana
     out_path = path.replace('.pdf', '_report.pdf')
     try:
         report = analyze(path)
+        report.filename = file.filename
         report.to_pdf(out_path)
         return FileResponse(
             out_path,
